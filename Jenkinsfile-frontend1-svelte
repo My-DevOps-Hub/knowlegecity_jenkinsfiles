@@ -1,7 +1,6 @@
 pipeline {
   agent any
   environment {
-    MODULE = "frontend2-svelte"
     DISTRIBUTION_ID = "E2X4774H0R2M5P" // CloudFront Distribution ID
   }
   stages {
