@@ -1,0 +1,50 @@
+pipeline {
+  agent any
+  environment {
+    MODULE = "frontend2-svelte"
+    DISTRIBUTION_ID = "E2X4774H0R2M5P" // CloudFront Distribution ID
+  }
+  stages {
+    stage('Installing Packages') {
+      steps {
+        sh('npm install')
+      }
+    }
+    stage('Build') {
+      steps {
+        sh('CI=false npm run build')
+      }
+    }
+    stage('Test') {
+      steps {
+        // Run tests using the testing framework (e.g., Jest)
+        sh('npm run test') // Make sure to add a test script in your package.json
+      }
+    }
+    stage('Deploy to S3 Buckets in Parallel') {
+      parallel 
+{
+        stage('Deploy to us-east-1 Bucket') {
+          steps {
+            sh('aws s3 cp --recursive ./build/ s3://frontend2-primary/')
+          }
+        }
+        stage('Deploy to us-west-1 Bucket') {
+          steps {
+            sh('aws s3 cp --recursive ./build/ s3://frontend2-secondary/')
+          }
+        }
+      }
+    }
+    stage('Invalidate CloudFront Cache') {
+      steps {
+        sh("aws cloudfront create-invalidation --distribution-id ${DISTRIBUTION_ID} --paths '/*' >> /dev/null")
+      }
+    }
+  }
+  post {
+    always {
+      cleanWs()
+    }
+  }
+}
