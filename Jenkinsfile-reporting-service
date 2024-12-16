@@ -1,0 +1,88 @@
+pipeline {
+  agent any
+  environment {
+        AWS_ACCOUNT = "123456789090"
+        MODULE = "reporting-service"
+        ENV = "prod"
+        CLUSTER1= "eks-us-east-1"
+		CLUSTER2= "eks-us-east-1"
+        NAMESPACE="prod"
+    }
+  stages {
+    stage('Build and Push docker image') {
+      steps {
+        parallel (
+          'us-east-1': {
+            sh """
+             aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${AWS_ACCOUNT}.dkr.ecr.us-east-1.amazonaws.com
+             docker tag ${MODULE}:${BUILD_NUMBER} ${AWS_ACCOUNT}.dkr.ecr.us-east-1.amazonaws.com/${MODULE}-${ENV}:${BUILD_NUMBER}
+             docker push ${AWS_ACCOUNT}.dkr.ecr.us-east-1.amazonaws.com/${MODULE}-${ENV}:${BUILD_NUMBER}
+            """
+          },
+          'us-west-1': {
+            sh """
+             aws ecr get-login-password --region us-west-1 | docker login --username AWS --password-stdin ${AWS_ACCOUNT}.dkr.ecr.us-west-1.amazonaws.com
+             docker tag ${MODULE}:${BUILD_NUMBER} ${AWS_ACCOUNT}.dkr.ecr.us-west-1.amazonaws.com/${MODULE}-${ENV}:${BUILD_NUMBER}
+             docker push ${AWS_ACCOUNT}.dkr.ecr.us-west-1.amazonaws.com/${MODULE}-${ENV}:${BUILD_NUMBER}
+           """
+         }
+       )
+     }
+   }
+
+    stage('Push docker image') {
+      steps {
+        parallel (
+          'us-east-1': {
+            sh """
+             aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${AWS_ACCOUNT}.dkr.ecr.us-east-1.amazonaws.com
+             docker push ${AWS_ACCOUNT}.dkr.ecr.us-east-1.amazonaws.com/${MODULE}-${ENV}:${BUILD_NUMBER}
+           """
+         },
+          'us-west-1': {
+            sh """
+             aws ecr get-login-password --region us-west-1 | docker login --username AWS --password-stdin ${AWS_ACCOUNT}.dkr.ecr.us-west-1.amazonaws.com
+             docker push ${AWS_ACCOUNT}.dkr.ecr.us-west-1.amazonaws.com/${MODULE}-${ENV}:${BUILD_NUMBER}
+           """
+        }
+      )
+    }
+  }
+
+    stage('Helm Update') {
+      parallel {
+        stage('Cluster-1 Deployment') {
+          steps {
+            script {
+              sh """
+                aws s3 cp s3://prod-kc-helm-charts ${MODULE} --recursive
+                aws eks --region us-east-1 update-kubeconfig --name ${CLUSTER1}
+                sed -i -e 's#latest#${BUILD_NUMBER}#' helm/${ENV}.values.yaml
+                helm upgrade --install --debug -f helm/${ENV}.values.yaml ${ENV}-${MODULE} ./${MODULE} -n ${NAMESPACE}
+              """
+            }
+        }
+    }
+    stage('Cluster-2 Deployment') {
+          steps {
+            script {
+              sh """
+                aws s3 cp s3://prod-kc-helm-charts ${MODULE} --recursive
+                aws eks --region us-west-1 update-kubeconfig --name  ${CLUSTER2}
+                sed -i -e 's#latest#${BUILD_NUMBER}#' helm/${ENV}.values.yaml
+                helm upgrade --install --debug -f helm/${ENV}.values.yaml ${ENV}-${MODULE} ./${MODULE} -n ${NAMESPACE}
+              """
+           }
+        }
+    }
+   }
+}
+
+  }
+  post {
+    always {
+      cleanWs()
+      sh('docker system prune -af')
+    }
+  }
+}
