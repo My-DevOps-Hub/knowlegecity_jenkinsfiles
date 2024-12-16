@@ -5,7 +5,7 @@ pipeline {
         MODULE = "reporting-service"
         ENV = "prod"
         CLUSTER1= "eks-us-east-1"
-	CLUSTER2= "eks-us-east-1"
+		CLUSTER2= "eks-us-east-1"
         NAMESPACE="prod"
     }
   stages {
@@ -75,7 +75,7 @@ pipeline {
            }
         }
     }
-   }
+  }
 }
 
   }
