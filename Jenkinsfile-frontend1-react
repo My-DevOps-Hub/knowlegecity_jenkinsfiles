@@ -1,0 +1,44 @@
+pipeline {
+  agent any
+  environment {
+    MODULE = "frontend1-react"
+    DOMAIN = "knowledgecity.com"
+    DISTRIBUTION_ID = "E2X4774H0R2M5P" // CloudFront Distribution ID
+  }
+  stages {
+    stage('Installing Packages') {
+      steps {
+        sh('npm install')
+      }
+    }
+    stage('Build') {
+      steps {
+        sh('CI=false npm run build')
+      }
+    }
+    stage('Deploy to S3 Buckets in Parallel') {
+      parallel {
+        stage('Deploy to us-east-1 Bucket') {
+          steps {
+            sh('aws s3 cp --recursive ./build/ s3://frontend1-primary/')
+          }
+        }
+        stage('Deploy to us-west-1 Bucket') {
+          steps {
+            sh('aws s3 cp --recursive ./build/ s3://frontend1-secondary/')
+          }
+        }
+      }
+    }
+    stage('Invalidate CloudFront Cache') {
+      steps {
+        sh("aws cloudfront create-invalidation --distribution-id ${DISTRIBUTION_ID} --paths '/*' >> /dev/null")
+      }
+    }
+  }
+  post {
+    always {
+      cleanWs()
+    }
+  }
+}
