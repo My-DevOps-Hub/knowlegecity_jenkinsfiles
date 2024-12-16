@@ -1,8 +1,6 @@
 pipeline {
   agent any
   environment {
-    MODULE = "frontend1-react"
-    DOMAIN = "knowledgecity.com"
     DISTRIBUTION_ID = "E2X4774H0R2M5P" // CloudFront Distribution ID
   }
   stages {
@@ -14,6 +12,12 @@ pipeline {
     stage('Build') {
       steps {
         sh('CI=false npm run build')
+      }
+    }
+    stage('Test') {
+      steps {
+        // Run tests using the testing framework (e.g., Jest)
+        sh('npm run test') // Make sure to add a test script in your package.json
       }
     }
     stage('Deploy to S3 Buckets in Parallel') {
