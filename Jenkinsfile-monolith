@@ -1,0 +1,68 @@
+pipeline {
+  agent any
+  environment {
+    // Define AWS regions and Auto Scaling group names
+    PRIMARY_REGION = 'us-east-1'
+    SECONDARY_REGION = 'us-west-1'
+    PRIMARY_ASG = 'asg_primary'
+    SECONDARY_ASG = 'asg_secondary'
+  }
+  stages {
+    stage('Clone Git Repository') {
+      steps {
+        // Cloning the Git repository
+        git 'https://your-repository-url.git' // Replace with your repository URL
+      }
+    }
+    stage('Install Dependencies') {
+      steps {
+        // Install PHP dependencies (e.g., Composer install)
+        sh('composer install')  // Adjust based on your application's requirements
+      }
+    }
+    stage('Build Application') {
+      steps {
+        // Build the application if necessary (for PHP, this might be optional)
+        sh('php artisan migrate --force') // Run migration if needed
+        sh('php artisan config:cache') // Cache configurations (adjust if needed)
+      }
+    }
+    stage('Test') {
+      steps {
+        // Run tests using the testing framework (e.g., PHPUnit or other test command)
+        sh('vendor/bin/phpunit') // Ensure you have PHPUnit set up for your PHP app
+      }
+    }
+    stage('Deploy to Auto Scaling Groups in Parallel') {
+      parallel {
+        stage('Deploy to Primary Auto Scaling Group') {
+          steps {
+            script {
+              // SSH or deploy the app to the primary auto scaling group (us-east-1)
+              // Assuming you use EC2 instances and deploy via SSH or other mechanisms
+              sh """
+                aws ec2 describe-instances --region ${PRIMARY_REGION} --filters "Name=tag:Name,Values=${PRIMARY_ASG}" --query 'Reservations[*].Instances[*].InstanceId' --output text | xargs -I {} aws ssm send-command --instance-ids {} --document-name "AWS-RunShellScript" --parameters 'commands=["cd /path/to/app && git pull && composer install && php artisan migrate --force && php artisan config:cache"]' --region ${PRIMARY_REGION}
+              """
+            }
+          }
+        }
+        stage('Deploy to Secondary Auto Scaling Group') {
+          steps {
+            script {
+              // SSH or deploy the app to the secondary auto scaling group (us-west-1)
+              // Assuming you use EC2 instances and deploy via SSH or other mechanisms
+              sh """
+                aws ec2 describe-instances --region ${SECONDARY_REGION} --filters "Name=tag:Name,Values=${SECONDARY_ASG}" --query 'Reservations[*].Instances[*].InstanceId' --output text | xargs -I {} aws ssm send-command --instance-ids {} --document-name "AWS-RunShellScript" --parameters 'commands=["cd /path/to/app && git pull && composer install && php artisan migrate --force && php artisan config:cache"]' --region ${SECONDARY_REGION}
+              """
+            }
+          }
+        }
+      }
+    }
+  }
+  post {
+    always {
+      cleanWs() // Clean up the workspace after the deployment
+    }
+  }
+}
